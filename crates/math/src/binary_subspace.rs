@@ -61,7 +61,8 @@ impl<F: BinaryField, Data: Deref<Target = [F]>> BinarySubspace<F, Data> {
 	/// - `index`: which subspace element to return, in `0..2^dim`.
 	///
 	/// # Panics
-	/// Panics if `index` is at least `2^dim`.
+	/// Panics if `index` is at least `2^dim`. Once `dim` reaches `usize::BITS`, every `usize`
+	/// is below `2^dim`, so no index can panic.
 	pub fn get(&self, index: usize) -> F {
 		// Once the dimension reaches usize::BITS, 2^dim exceeds every usize, so the bound
 		// holds for any index and computing it would overflow.
@@ -116,14 +117,13 @@ impl<F: BinaryField> BinarySubspace<F> {
 fn element_at<F: BinaryField>(basis: &[F], index: usize) -> F {
 	basis
 		.iter()
+		// A basis element past the top of the index has no bit to select it, so the sum stops
+		// there. This also keeps the shift below in range without a per-element branch.
+		.take(usize::BITS as usize)
 		.enumerate()
 		// Keep basis_i when bit i of index is set.
-		// Drop it (multiply by 0) otherwise. A basis longer than usize::BITS has no bit to
-		// read past the top of the index, so those elements are never selected.
-		.map(|(i, &basis_i)| {
-			let selected = index.checked_shr(i as u32).unwrap_or(0) & 1 == 1;
-			basis_i * BinaryField1b::from(selected)
-		})
+		// Drop it (multiply by 0) otherwise.
+		.map(|(i, &basis_i)| basis_i * BinaryField1b::from((index >> i) & 1 == 1))
 		.sum()
 }
 
